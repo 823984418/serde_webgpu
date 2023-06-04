@@ -35,6 +35,9 @@ use serde::{Serialize, Serializer};
 pub mod mat;
 pub mod vec;
 
+#[allow(non_camel_case_types)]
+pub type f16 = half::f16;
+
 #[derive(Copy, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Align {
     #[default]
@@ -65,59 +68,51 @@ impl Align {
     }
 }
 
-#[derive(Copy, Clone)]
-pub enum WebGPUItem {
+#[derive(Copy, Clone, Debug)]
+enum WebGPUItem {
     Align(Align),
-    Data(u8),
-}
-
-impl Debug for WebGPUItem {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WebGPUItem::Align(x) => Debug::fmt(x, f),
-            WebGPUItem::Data(x) => Debug::fmt(x, f),
-        }
-    }
+    Data(usize),
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct WebGPUBlock {
-    vec: Vec<WebGPUItem>,
+struct WebGPUBlock {
+    buffer: Vec<u8>,
+    items: Vec<WebGPUItem>,
 }
 
 impl WebGPUBlock {
     pub fn append(&mut self, i: &[u8]) {
-        self.vec.extend(i.iter().copied().map(WebGPUItem::Data));
+        self.buffer.extend_from_slice(i);
+        self.items.push(WebGPUItem::Data(i.len()));
     }
 
     pub fn align(&mut self, align: Align) -> usize {
-        let index = self.vec.len();
-        self.vec.push(WebGPUItem::Align(align));
+        let index = self.items.len();
+        self.items.push(WebGPUItem::Align(align));
         index
     }
 
     pub fn get_align(&self, index: usize) -> Align {
-        match self.vec[index] {
+        match self.items[index] {
             WebGPUItem::Align(a) => a,
             _ => unreachable!(),
         }
     }
 
-    pub fn align_append(&mut self, index: usize, align: Align) {
-        match &mut self.vec[index] {
+    fn align_append(&mut self, index: usize, align: Align) {
+        match &mut self.items[index] {
             WebGPUItem::Align(a) => a.append(align),
             _ => unreachable!(),
         }
     }
 
-    pub fn compute_layout(&self) -> Vec<u8> {
+    fn compute_layout(&self) -> Vec<u8> {
         let mut buffer = Vec::new();
-        for &i in &self.vec {
+        let mut offset = 0;
+        for &i in &self.items {
             match i {
+                WebGPUItem::Align(Align::Align0) => {}
                 WebGPUItem::Align(align) => {
-                    if align == Align::Align0 {
-                        continue;
-                    }
                     let a = align.value() - 1;
                     let p = buffer.len();
                     let s = (p + a) & !a;
@@ -125,11 +120,14 @@ impl WebGPUBlock {
                         buffer.push(0);
                     }
                 }
-                WebGPUItem::Data(data) => {
-                    buffer.push(data);
+                WebGPUItem::Data(length) => {
+                    let next_offset = offset + length;
+                    buffer.extend_from_slice(&self.buffer[offset..next_offset]);
+                    offset = next_offset;
                 }
             }
         }
+        assert_eq!(offset, self.buffer.len());
         buffer
     }
 }
@@ -158,7 +156,7 @@ impl serde::ser::Error for WebGPUSerializeError {
     }
 }
 
-pub struct WebGPUSerializer<'s> {
+struct WebGPUSerializer<'s> {
     write: &'s mut WebGPUBlock,
 }
 
@@ -382,20 +380,20 @@ impl<'s> Serializer for WebGPUSerializer<'s> {
     }
 }
 
-pub struct WebGPUSerializeStruct<'s> {
+struct WebGPUSerializeStruct<'s> {
     write: &'s mut WebGPUBlock,
     align_index: usize,
     ext_align: Align,
 }
 
 impl<'s> WebGPUSerializeStruct<'s> {
-    pub fn align_to(&mut self, align: Align) {
+    fn align_to(&mut self, align: Align) {
         self.write.align_append(self.align_index, align);
     }
 }
 
 impl<'s> WebGPUSerializeStruct<'s> {
-    pub fn new(write: &'s mut WebGPUBlock, ext_align: Align) -> Self {
+    fn new(write: &'s mut WebGPUBlock, ext_align: Align) -> Self {
         let align_index = write.align(Default::default());
         Self {
             write,
@@ -413,7 +411,7 @@ impl<'s> WebGPUSerializeStruct<'s> {
         Ok(())
     }
 
-    pub fn end(self) -> Result<Align, WebGPUSerializeError> {
+    fn end(self) -> Result<Align, WebGPUSerializeError> {
         let align = self.write.get_align(self.align_index);
         if align == Align::Align0 {
             return Err(serde::ser::Error::custom("zero size type is not supported"));
@@ -491,17 +489,20 @@ impl<'s> SerializeSeq for WebGPUSerializeStruct<'s> {
     }
 }
 
-pub fn serialize_webgpu<T: Serialize>(value: &T) -> Result<Vec<u8>, WebGPUSerializeError> {
-    let mut items = WebGPUBlock { vec: Vec::new() };
-    let serializer = WebGPUSerializer { write: &mut items };
+fn serialize_webgpu_base<T: Serialize>(value: &T) -> Result<WebGPUBlock, WebGPUSerializeError> {
+    let mut block = WebGPUBlock::default();
+    let serializer = WebGPUSerializer { write: &mut block };
     value.serialize(serializer)?;
-    Ok(items.compute_layout())
+    Ok(block)
+}
+
+pub fn serialize_webgpu<T: Serialize>(value: &T) -> Result<Vec<u8>, WebGPUSerializeError> {
+    let block = serialize_webgpu_base(value)?;
+    Ok(block.compute_layout())
 }
 
 pub fn serialize_webgpu_buffer<T: Serialize>(value: &T) -> Result<Vec<u8>, WebGPUSerializeError> {
-    let mut items = WebGPUBlock { vec: Vec::new() };
-    let serializer = WebGPUSerializer { write: &mut items };
-    value.serialize(serializer)?;
-    items.align(Align::Align16);
-    Ok(items.compute_layout())
+    let mut block = serialize_webgpu_base(value)?;
+    block.align(Align::Align16);
+    Ok(block.compute_layout())
 }

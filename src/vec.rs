@@ -1,8 +1,9 @@
 #![allow(non_camel_case_types)]
 
-use half::f16;
 use serde::ser::SerializeTupleStruct;
 use serde::{Serialize, Serializer};
+
+use crate::f16;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct vec2<T>(pub T, pub T);
