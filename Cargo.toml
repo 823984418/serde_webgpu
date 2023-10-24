@@ -1,6 +1,6 @@
 [package]
 name = "serde_webgpu"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Serialize WebGPU uniform buffer member layout"
 keywords = ["WebGPU"]
@@ -8,5 +8,5 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/823984418/serde_webgpu"
 
 [dependencies]
-half = { version = "2.2.1", features = ["serde"] }
-serde = { version = "1.0.163" }
+half = { version = "2", features = ["serde"] }
+serde = { version = "1" }
