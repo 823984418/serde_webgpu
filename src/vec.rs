@@ -10,6 +10,12 @@ use crate::f16;
 #[derive(Copy, Clone, Debug, Default)]
 pub struct vec2<T>(pub [T; 2]);
 
+impl<T> From<[T; 2]> for vec2<T> {
+    fn from(value: [T; 2]) -> Self {
+        Self(value)
+    }
+}
+
 impl<T> Deref for vec2<T> {
     type Target = [T; 2];
 
@@ -74,6 +80,12 @@ impl Serialize for vec2<f32> {
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct vec3<T>(pub [T; 3]);
+
+impl<T> From<[T; 3]> for vec3<T> {
+    fn from(value: [T; 3]) -> Self {
+        Self(value)
+    }
+}
 
 impl<T> Deref for vec3<T> {
     type Target = [T; 3];
@@ -143,6 +155,12 @@ impl Serialize for vec3<f32> {
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct vec4<T>(pub [T; 4]);
+
+impl<T> From<[T; 4]> for vec4<T> {
+    fn from(value: [T; 4]) -> Self {
+        Self(value)
+    }
+}
 
 impl<T> Deref for vec4<T> {
     type Target = [T; 4];

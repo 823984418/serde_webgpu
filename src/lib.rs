@@ -39,7 +39,7 @@ pub mod vec;
 pub type f16 = half::f16;
 
 #[derive(Copy, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq)]
-pub enum Align {
+enum Align {
     #[default]
     Align0,
     Align1,
@@ -81,18 +81,18 @@ struct WebGPUBlock {
 }
 
 impl WebGPUBlock {
-    pub fn append(&mut self, i: &[u8]) {
+    fn append(&mut self, i: &[u8]) {
         self.buffer.extend_from_slice(i);
         self.items.push(WebGPUItem::Data(i.len()));
     }
 
-    pub fn align(&mut self, align: Align) -> usize {
+    fn align(&mut self, align: Align) -> usize {
         let index = self.items.len();
         self.items.push(WebGPUItem::Align(align));
         index
     }
 
-    pub fn get_align(&self, index: usize) -> Align {
+    fn get_align(&self, index: usize) -> Align {
         match self.items[index] {
             WebGPUItem::Align(a) => a,
             _ => unreachable!(),
